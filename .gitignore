@@ -1,0 +1,26 @@
+# Python virtual environment
+venv/
+env/
+.venv/
+
+# Byte-compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temporary and event recordings
+server/events/*.wav
+server/events/*.json
+!server/events/.gitkeep
+tools/*.wav
+test_recording.wav
+
+# Heavy extracted raw dataset audio (keep metadata and code)
+sources/coswara/Extracted_data/
+*.tar.gz*
+
+# OS / Editor specific files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

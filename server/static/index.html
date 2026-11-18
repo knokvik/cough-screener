@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cough Prescreening Demo — Live Pipeline</title>
+  <style>
+    :root {
+      --bg-base: #0a0f1d;
+      --bg-surface: #111827;
+      --bg-card: #1f2937;
+      --bg-card-hover: #283548;
+      --border-color: #374151;
+      --text-primary: #f3f4f6;
+      --text-secondary: #9ca3af;
+      --text-muted: #6b7280;
+      
+      --color-healthy: #10b981;
+      --color-healthy-bg: rgba(16, 185, 129, 0.15);
+      --color-suspect: #ef4444;
+      --color-suspect-bg: rgba(239, 68, 68, 0.18);
+      --color-nocough: #f59e0b;
+      --color-nocough-bg: rgba(245, 158, 11, 0.15);
+      
+      --color-cyan: #06b6d4;
+      --color-cyan-glow: rgba(6, 182, 212, 0.35);
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 1200px;
+      width: 100%;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Disclaimer Banner */
+    .disclaimer-banner {
+      background: linear-gradient(90deg, #78350f, #92400e);
+      border: 1px solid #d97706;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 0.85rem;
+      color: #fef3c7;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    .disclaimer-banner strong {
+      color: #fff;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      background-color: var(--bg-surface);
+      padding: 14px 20px;
+      border-radius: 10px;
+      border: 1px solid var(--border-color);
+    }
+    .header-title h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .header-title p {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+    }
+    .header-status {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 0.85rem;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 12px;
+      border-radius: 9999px;
+      background: #1e293b;
+      border: 1px solid var(--border-color);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+    }
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background-color: #ef4444;
+      display: inline-block;
+      box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+      transition: background-color 0.3s, box-shadow 0.3s;
+    }
+    .status-dot.connected {
+      background-color: #10b981;
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.8);
+      animation: pulse-dot 2s infinite ease-in-out;
+    }
+    .status-dot.connecting {
+      background-color: #f59e0b;
+      box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.65; transform: scale(1.15); }
+    }
+
+    .model-tag {
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .model-tag.dummy {
+      background-color: rgba(245, 158, 11, 0.2);
+      color: #fbbf24;
+      border: 1px solid #b45309;
+    }
+    .model-tag.trained {
+      background-color: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+      border: 1px solid #059669;
+    }
+
+    /* Grid Layout */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 16px;
+    }
+    @media (max-width: 900px) {
+      .dashboard-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Card Panels */
+    .card {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .card-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #e5e7eb;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+      padding-bottom: 8px;
+    }
+    .card-title .badge {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-weight: 400;
+    }
+
+    /* Live Waveform Canvas */
+    .canvas-container {
+      position: relative;
+      background-color: #0b111e;
+      border-radius: 6px;
+      border: 1px solid #1f2937;
+      overflow: hidden;
+      height: 140px;
+      width: 100%;
+    }
+    canvas#oscilloscope {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .vad-indicator {
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      font-size: 0.7rem;
+      font-family: var(--font-mono);
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid #374151;
+      color: var(--text-muted);
+      transition: all 0.2s ease;
+    }
+    .vad-indicator.active {
+      background: rgba(239, 68, 68, 0.8);
+      color: #fff;
+      border-color: #f87171;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.8);
+    }
+
+    /* Audio Metrics Strip */
+    .audio-stats-strip {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+    }
+    .stat-box {
+      background-color: var(--bg-card);
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .stat-box .label {
+      color: var(--text-muted);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .stat-box .val {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #38bdf8;
+      margin-top: 2px;
+    }
+
+    /* Level Meter Bar */
+    .meter-container {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-top: 4px;
+    }
+    .meter-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+    .meter-track {
+      height: 8px;
+      background-color: #1f2937;
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+    .meter-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #10b981 0%, #38bdf8 60%, #f59e0b 85%, #ef4444 100%);
+      transition: width 0.08s linear;
+      border-radius: 4px;
+    }
+    .meter-threshold-marker {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background-color: #f87171;
+      box-shadow: 0 0 4px #ef4444;
+      display: none;
+    }
+
+    /* Big Prediction Card */
+    .prediction-display {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px 12px;
+      border-radius: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      transition: all 0.3s ease;
+      text-align: center;
+    }
+    .prediction-display.healthy {
+      background: var(--color-healthy-bg);
+      border-color: var(--color-healthy);
+    }
+    .prediction-display.cough_suspect {
+      background: var(--color-suspect-bg);
+      border-color: var(--color-suspect);
+    }
+    .prediction-display.no_cough {
+      background: var(--color-nocough-bg);
+      border-color: var(--color-nocough);
+    }
+
+    .pred-pill {
+      display: inline-block;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+    .pred-label {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #e5e7eb;
+      margin-bottom: 2px;
+      transition: color 0.3s;
+    }
+    .pred-label.healthy { color: #34d399; }
+    .pred-label.cough_suspect { color: #f87171; }
+    .pred-label.no_cough { color: #fbbf24; }
+
+    .pred-conf {
+      font-size: 1.25rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: var(--text-secondary);
+    }
+
+    /* Class Probability Bars */
+    .prob-bars-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 6px;
+    }
+    .prob-bar-group {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .prob-bar-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+    }
+    .prob-bar-header .val {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .prob-track {
+      height: 10px;
+      background-color: #1f2937;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .prob-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 5px;
+      transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .prob-fill.healthy { background-color: var(--color-healthy); }
+    .prob-fill.suspect { background-color: var(--color-suspect); }
+    .prob-fill.nocough { background-color: var(--color-nocough); }
+
+    /* Spectrogram Section */
+    .spectrogram-section {
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      overflow: hidden;
+      background-color: var(--bg-card);
+    }
+    .spectrogram-header {
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      background-color: #1e293b;
+      user-select: none;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .spectrogram-header:hover {
+      background-color: #24334a;
+    }
+    .spectrogram-header .chevron {
+      transition: transform 0.2s ease;
+    }
+    .spectrogram-header.collapsed .chevron {
+      transform: rotate(-90deg);
+    }
+    .spectrogram-body {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: center;
+    }
+    .spectrogram-body.hidden {
+      display: none;
+    }
+    canvas#spectrogramCanvas {
+      width: 100%;
+      max-width: 520px;
+      height: 140px;
+      background-color: #000;
+      border-radius: 4px;
+      border: 1px solid #374151;
+      image-rendering: pixelated;
+    }
+    .spec-legend {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      max-width: 520px;
+      font-size: 0.7rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+    }
+
+    /* Event Log Table */
+    .event-log-container {
+      max-height: 250px;
+      overflow-y: auto;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      background-color: #0f172a;
+    }
+    table.event-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+      font-family: var(--font-mono);
+      text-align: left;
+    }
+    table.event-table th {
+      background-color: #1e293b;
+      color: var(--text-secondary);
+      font-weight: 600;
+      padding: 8px 12px;
+      position: sticky;
+      top: 0;
+      border-bottom: 1px solid var(--border-color);
+      z-index: 2;
+    }
+    table.event-table td {
+      padding: 7px 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      color: var(--text-primary);
+    }
+    table.event-table tr:hover {
+      background-color: rgba(255, 255, 255, 0.03);
+    }
+    .badge-pill {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .badge-pill.healthy {
+      background: var(--color-healthy-bg);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+    }
+    .badge-pill.cough_suspect {
+      background: var(--color-suspect-bg);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+    }
+    .badge-pill.no_cough {
+      background: var(--color-nocough-bg);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+    }
+
+    /* Footer */
+    footer {
+      margin-top: 8px;
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    footer a {
+      color: #38bdf8;
+      text-decoration: none;
+    }
+    footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- Medical Disclaimer Banner -->
+  <div class="disclaimer-banner">
+    <div style="font-size: 1.3rem;">⚠️</div>
+    <div>
+      <strong>ACADEMIC RESEARCH & PRESCREENING DEMO ONLY — NOT A MEDICAL DEVICE</strong><br>
+      This software pipeline is an IoT proof-of-concept based on the MIT paper <em>"COVID-19 AI Diagnosis Using Only Cough Recordings"</em> (Laguarta et al., IEEE OJEMB 2020). It does <strong>NOT</strong> diagnose COVID-19 or any illness. Never use for clinical diagnostic decisions.
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header>
+    <div class="header-title">
+      <h1>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" x2="12" y1="19" y2="22"/>
+        </svg>
+        Cough Prescreening Pipeline
+      </h1>
+      <p>ESP32 (INMP441) → WiFi WebSocket → PC CNN Inference → Live Web Dashboard</p>
+    </div>
+
+    <div class="header-status">
+      <div id="modelTag" class="model-tag dummy">Initializing</div>
+      <div class="status-badge">
+        <span id="statusDot" class="status-dot connecting"></span>
+        <span id="statusText">Connecting to server...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Grid -->
+  <div class="dashboard-grid">
+
+    <!-- LEFT COLUMN: Live Audio & Telemetry -->
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+      
+      <!-- Live Oscilloscope Card -->
+      <div class="card">
+        <div class="card-title">
+          <span>Live Audio Oscilloscope</span>
+          <span class="badge">16 kHz • 16-bit Mono</span>
+        </div>
+
+        <div class="canvas-container">
+          <canvas id="oscilloscope"></canvas>
+          <div id="vadBadge" class="vad-indicator">LISTENING</div>
+        </div>
+
+        <!-- Level Meter -->
+        <div class="meter-container">
+          <div class="meter-labels">
+            <span>Audio RMS Level</span>
+            <span id="levelValueText">0.0 RMS</span>
+          </div>
+          <div class="meter-track">
+            <div id="meterFill" class="meter-fill"></div>
+            <div id="threshMarker" class="meter-threshold-marker"></div>
+          </div>
+        </div>
+
+        <!-- Audio Metrics Strip -->
+        <div class="audio-stats-strip">
+          <div class="stat-box">
+            <div class="label">Current RMS</div>
+            <div id="statRms" class="val">0.0</div>
+          </div>
+          <div class="stat-box">
+            <div class="label">Noise Floor</div>
+            <div id="statFloor" class="val">0.0</div>
+          </div>
+          <div class="stat-box">
+            <div class="label">VAD Threshold</div>
+            <div id="statThreshold" class="val">0.0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Spectrogram Card -->
+      <div class="spectrogram-section">
+        <div id="specHeader" class="spectrogram-header">
+          <span>Mel-Spectrogram (Last Sound Event)</span>
+          <span class="chevron">▼</span>
+        </div>
+        <div id="specBody" class="spectrogram-body">
+          <canvas id="spectrogramCanvas" width="256" height="128"></canvas>
+          <div class="spec-legend">
+            <span>Freq: 50 Hz</span>
+            <span>64 Mel Filterbanks (Log Power dB)</span>
+            <span>8.0 kHz</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT COLUMN: Predictions & Event Log -->
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+
+      <!-- Primary Prediction Card -->
+      <div class="card">
+        <div class="card-title">
+          <span>Acoustic Classification</span>
+          <span id="lastEventTime" class="badge">Awaiting sound event</span>
+        </div>
+
+        <div id="predictionDisplay" class="prediction-display">
+          <span class="pred-pill">CLASSIFICATION RESULT</span>
+          <div id="predLabel" class="pred-label">READY</div>
+          <div id="predConf" class="pred-conf">Cough at microphone</div>
+        </div>
+
+        <!-- Probability Distribution Bars -->
+        <div class="prob-bars-container">
+          
+          <div class="prob-bar-group">
+            <div class="prob-bar-header">
+              <span>Healthy Cough</span>
+              <span id="probHealthyText" class="val">0.0%</span>
+            </div>
+            <div class="prob-track">
+              <div id="probHealthyFill" class="prob-fill healthy"></div>
+            </div>
+          </div>
+
+          <div class="prob-bar-group">
+            <div class="prob-bar-header">
+              <span>Cough Suspect (COVID-19 Risk)</span>
+              <span id="probSuspectText" class="val">0.0%</span>
+            </div>
+            <div class="prob-track">
+              <div id="probSuspectFill" class="prob-fill suspect"></div>
+            </div>
+          </div>
+
+          <div class="prob-bar-group">
+            <div class="prob-bar-header">
+              <span>No Cough / Speech / Noise</span>
+              <span id="probNoCoughText" class="val">0.0%</span>
+            </div>
+            <div class="prob-track">
+              <div id="probNoCoughFill" class="prob-fill nocough"></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Event History Log Card -->
+      <div class="card" style="flex: 1;">
+        <div class="card-title">
+          <span>Detection Event Log</span>
+          <span id="eventCountBadge" class="badge">0 events</span>
+        </div>
+
+        <div class="event-log-container">
+          <table class="event-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Classification</th>
+                <th>Confidence</th>
+                <th>Duration</th>
+              </tr>
+            </thead>
+            <tbody id="eventLogBody">
+              <tr>
+                <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                  No sound events recorded yet. Stream audio from ESP32.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <footer>
+    FHT Engineering Demo • MIT Laguarta et al. Architecture • ESP32 + INMP441 + PyTorch + FastAPI
+  </footer>
+
+</div>
+
+<!-- Self-Contained JavaScript (Zero CDN Dependencies) -->
+<script>
+(() => {
+  // --- DOM Elements ---
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const modelTag = document.getElementById('modelTag');
+  
+  const oscCanvas = document.getElementById('oscilloscope');
+  const oscCtx = oscCanvas.getContext('2d');
+  const vadBadge = document.getElementById('vadBadge');
+  
+  const meterFill = document.getElementById('meterFill');
+  const levelValueText = document.getElementById('levelValueText');
+  const threshMarker = document.getElementById('threshMarker');
+
+  const statRms = document.getElementById('statRms');
+  const statFloor = document.getElementById('statFloor');
+  const statThreshold = document.getElementById('statThreshold');
+
+  const predictionDisplay = document.getElementById('predictionDisplay');
+  const predLabel = document.getElementById('predLabel');
+  const predConf = document.getElementById('predConf');
+  const lastEventTime = document.getElementById('lastEventTime');
+
+  const probHealthyFill = document.getElementById('probHealthyFill');
+  const probSuspectFill = document.getElementById('probSuspectFill');
+  const probNoCoughFill = document.getElementById('probNoCoughFill');
+  const probHealthyText = document.getElementById('probHealthyText');
+  const probSuspectText = document.getElementById('probSuspectText');
+  const probNoCoughText = document.getElementById('probNoCoughText');
+
+  const specHeader = document.getElementById('specHeader');
+  const specBody = document.getElementById('specBody');
+  const specCanvas = document.getElementById('spectrogramCanvas');
+  const specCtx = specCanvas.getContext('2d');
+
+  const eventLogBody = document.getElementById('eventLogBody');
+  const eventCountBadge = document.getElementById('eventCountBadge');
+
+  // --- Oscilloscope State ---
+  const oscPoints = 120;
+  const oscHistory = new Array(oscPoints).fill(0);
+  let peakRmsScale = 1500; // Auto-scaling ceiling
+  let totalEventsCount = 0;
+
+  // Resize canvas for sharp retina displays
+  function resizeOscilloscope() {
+    const rect = oscCanvas.parentElement.getBoundingClientRect();
+    oscCanvas.width = rect.width * window.devicePixelRatio;
+    oscCanvas.height = rect.height * window.devicePixelRatio;
+    oscCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  }
+  window.addEventListener('resize', resizeOscilloscope);
+  resizeOscilloscope();
+
+  // Collapsible Spectrogram
+  specHeader.addEventListener('click', () => {
+    specHeader.classList.toggle('collapsed');
+    specBody.classList.toggle('hidden');
+  });
+
+  // Render Oscilloscope Frame
+  function renderOscilloscope() {
+    const w = oscCanvas.width / window.devicePixelRatio;
+    const h = oscCanvas.height / window.devicePixelRatio;
+    const centerY = h / 2;
+
+    oscCtx.clearRect(0, 0, w, h);
+
+    // Subtle background grid lines
+    oscCtx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+    oscCtx.lineWidth = 1;
+    oscCtx.beginPath();
+    oscCtx.moveTo(0, centerY);
+    oscCtx.lineTo(w, centerY);
+    oscCtx.stroke();
+
+    // Waveform line
+    oscCtx.strokeStyle = '#06b6d4';
+    oscCtx.lineWidth = 2.0;
+    oscCtx.shadowColor = 'rgba(6, 182, 212, 0.7)';
+    oscCtx.shadowBlur = 8;
+    oscCtx.beginPath();
+
+    const stepX = w / (oscPoints - 1);
+    for (let i = 0; i < oscPoints; i++) {
+      const val = oscHistory[i];
+      // Normalize to height
+      const normVal = Math.min(1.0, val / Math.max(800, peakRmsScale));
+      // Symmetrical amplitude oscillation simulation for smooth visual aesthetic
+      const yOffset = normVal * (centerY * 0.85) * (i % 2 === 0 ? 1 : -1);
+      const y = centerY - yOffset;
+      const x = i * stepX;
+
+      if (i === 0) oscCtx.moveTo(x, y);
+      else oscCtx.lineTo(x, y);
+    }
+    oscCtx.stroke();
+    oscCtx.shadowBlur = 0;
+
+    requestAnimationFrame(renderOscilloscope);
+  }
+  requestAnimationFrame(renderOscilloscope);
+
+  // Render Spectrogram Heatmap
+  function renderSpectrogram(matrix) {
+    if (!matrix || !matrix.length) return;
+    const rows = matrix.length;       // 64 mel bands
+    const cols = matrix[0].length;    // 64 time frames
+    
+    specCanvas.width = cols;
+    specCanvas.height = rows;
+
+    const imgData = specCtx.createImageData(cols, rows);
+    const data = imgData.data;
+
+    // Magma/Inferno colormap interpolation
+    for (let r = 0; r < rows; r++) {
+      // Flip vertical so low frequencies are at bottom
+      const rowIdx = rows - 1 - r;
+      for (let c = 0; c < cols; c++) {
+        const val = Math.max(0, Math.min(1.0, matrix[rowIdx][c]));
+        const pixelIdx = (r * cols + c) * 4;
+
+        // Inferno Palette: black -> purple -> red -> orange -> yellow
+        let red, green, blue;
+        if (val < 0.25) {
+          const t = val / 0.25;
+          red = Math.floor(10 + t * 60);
+          green = 0;
+          blue = Math.floor(20 + t * 100);
+        } else if (val < 0.5) {
+          const t = (val - 0.25) / 0.25;
+          red = Math.floor(70 + t * 130);
+          green = Math.floor(10 + t * 30);
+          blue = Math.floor(120 - t * 60);
+        } else if (val < 0.75) {
+          const t = (val - 0.5) / 0.25;
+          red = Math.floor(200 + t * 45);
+          green = Math.floor(40 + t * 110);
+          blue = Math.floor(60 - t * 40);
+        } else {
+          const t = (val - 0.75) / 0.25;
+          red = Math.floor(245 + t * 10);
+          green = Math.floor(150 + t * 90);
+          blue = Math.floor(20 + t * 180);
+        }
+
+        data[pixelIdx] = red;
+        data[pixelIdx + 1] = green;
+        data[pixelIdx + 2] = blue;
+        data[pixelIdx + 3] = 255;
+      }
+    }
+
+    specCtx.putImageData(imgData, 0, 0);
+  }
+
+  // --- WebSocket Client & Auto-Reconnect ---
+  let socket = null;
+  let reconnectTimer = null;
+
+  function connectWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/ui`;
+
+    statusDot.className = 'status-dot connecting';
+    statusText.textContent = 'Connecting...';
+
+    socket = new WebSocket(wsUrl);
+
+    socket.onopen = () => {
+      statusDot.className = 'status-dot connected';
+      statusText.textContent = 'Connected (ws/ui)';
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        handleServerMessage(msg);
+      } catch (err) {
+        console.error('Error parsing WS frame:', err);
+      }
+    };
+
+    socket.onclose = () => {
+      statusDot.className = 'status-dot';
+      statusText.textContent = 'Disconnected (retrying...)';
+      scheduleReconnect();
+    };
+
+    socket.onerror = (err) => {
+      console.warn('WebSocket error:', err);
+      socket.close();
+    };
+  }
+
+  function scheduleReconnect() {
+    if (!reconnectTimer) {
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connectWebSocket();
+      }, 2500);
+    }
+  }
+
+  // --- Message Dispatcher ---
+  function handleServerMessage(msg) {
+    if (msg.type === 'init') {
+      // Model tag
+      if (msg.is_dummy_model) {
+        modelTag.textContent = 'DUMMY CLASSIFIER';
+        modelTag.className = 'model-tag dummy';
+        modelTag.title = 'Running in simulated mode. Train with server/train.py to load real weights.';
+      } else {
+        modelTag.textContent = 'TRAINED CNN';
+        modelTag.className = 'model-tag trained';
+      }
+    } else if (msg.type === 'level') {
+      updateAudioLevel(msg);
+    } else if (msg.type === 'prediction') {
+      handlePredictionEvent(msg);
+    }
+  }
+
+  // Handle 100ms Level Updates
+  function updateAudioLevel(msg) {
+    const rms = msg.rms || 0;
+    const floor = msg.noise_floor || 0;
+    const thresh = msg.threshold || 0;
+    const isEvent = !!msg.is_event;
+
+    // Update stats strip
+    statRms.textContent = rms.toFixed(1);
+    statFloor.textContent = floor.toFixed(1);
+    statThreshold.textContent = thresh.toFixed(1);
+
+    // Update oscilloscope array
+    oscHistory.shift();
+    oscHistory.push(rms);
+    if (rms > peakRmsScale) peakRmsScale = rms * 1.2;
+    else peakRmsScale = Math.max(1200, peakRmsScale * 0.995);
+
+    // VAD Badge
+    if (isEvent) {
+      vadBadge.textContent = 'CAPTURING EVENT';
+      vadBadge.className = 'vad-indicator active';
+    } else {
+      vadBadge.textContent = 'LISTENING';
+      vadBadge.className = 'vad-indicator';
+    }
+
+    // Level meter fill (log-like scaling)
+    const meterPct = Math.min(100, Math.max(0, (rms / Math.max(500, thresh * 2.5)) * 100));
+    meterFill.style.width = `${meterPct}%`;
+    levelValueText.textContent = `${rms.toFixed(1)} RMS`;
+
+    // Threshold indicator line on meter
+    const threshPct = Math.min(100, (thresh / Math.max(500, thresh * 2.5)) * 100);
+    threshMarker.style.left = `${threshPct}%`;
+    threshMarker.style.display = 'block';
+  }
+
+  // Handle Cough Prediction Event
+  function handlePredictionEvent(event) {
+    totalEventsCount++;
+    eventCountBadge.textContent = `${totalEventsCount} event${totalEventsCount === 1 ? '' : 's'}`;
+
+    const label = event.label;
+    const conf = (event.confidence * 100).toFixed(1);
+    const probs = event.probs || {};
+
+    // Format display card
+    predictionDisplay.className = `prediction-display ${label}`;
+    predLabel.className = `pred-label ${label}`;
+
+    let labelDisplay = 'NO COUGH / NOISE';
+    if (label === 'healthy') labelDisplay = 'HEALTHY COUGH';
+    else if (label === 'cough_suspect') labelDisplay = 'COUGH SUSPECT';
+
+    predLabel.textContent = labelDisplay;
+    predConf.textContent = `${conf}% Confidence`;
+
+    const d = new Date(event.timestamp);
+    const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    lastEventTime.textContent = `${timeStr} (${event.duration_sec}s)`;
+
+    // Update Probability Bars
+    const pHealthy = ((probs.healthy || 0) * 100).toFixed(1);
+    const pSuspect = ((probs.cough_suspect || 0) * 100).toFixed(1);
+    const pNoCough = ((probs.no_cough || 0) * 100).toFixed(1);
+
+    probHealthyFill.style.width = `${pHealthy}%`;
+    probHealthyText.textContent = `${pHealthy}%`;
+
+    probSuspectFill.style.width = `${pSuspect}%`;
+    probSuspectText.textContent = `${pSuspect}%`;
+
+    probNoCoughFill.style.width = `${pNoCough}%`;
+    probNoCoughText.textContent = `${pNoCough}%`;
+
+    // Render Spectrogram heatmap if present
+    if (event.spectrogram) {
+      renderSpectrogram(event.spectrogram);
+    }
+
+    // Append to Event Log table (newest at top)
+    if (totalEventsCount === 1) {
+      eventLogBody.innerHTML = '';
+    }
+
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${timeStr}</td>
+      <td><span class="badge-pill ${label}">${label.replace('_', ' ')}</span></td>
+      <td>${conf}%</td>
+      <td>${event.duration_sec}s</td>
+    `;
+    eventLogBody.insertBefore(row, eventLogBody.firstChild);
+
+    // Keep max 50 rows
+    while (eventLogBody.children.length > 50) {
+      eventLogBody.removeChild(eventLogBody.lastChild);
+    }
+  }
+
+  // Initial connect
+  connectWebSocket();
+
+})();
+</script>
+
+</body>
+</html>
